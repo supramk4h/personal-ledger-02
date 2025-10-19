@@ -335,18 +335,35 @@ const saveVoucher = async (voucherData) => {
         } else {
             // Create new voucher - generate voucher number
             const voucherNumber = generateVoucherNumber(voucherData.type);
-            
-            const { data: voucher, error: voucherError } = await supabase
+
+            // Try to insert including voucher_number; if the server schema does not contain
+            // that column (PostgREST PGRST204), retry without it.
+            let insertPayload = {
+                date: voucherData.date,
+                type: voucherData.type,
+                narration: voucherData.narration,
+                voucher_number: voucherNumber
+            };
+
+            let { data: voucher, error: voucherError } = await supabase
                 .from('vouchers')
-                .insert({
-                    date: voucherData.date,
-                    type: voucherData.type,
-                    narration: voucherData.narration,
-                    voucher_number: voucherNumber
-                })
+                .insert(insertPayload)
                 .select()
                 .single();
-            
+
+            // Handle missing-column schema error by retrying without the field
+            if (voucherError && voucherError.code === 'PGRST204' && voucherError.message && voucherError.message.includes('voucher_number')) {
+                console.warn('voucher_number column missing in DB schema; retrying insert without voucher_number');
+                delete insertPayload.voucher_number;
+                const resp = await supabase
+                    .from('vouchers')
+                    .insert(insertPayload)
+                    .select()
+                    .single();
+                voucher = resp.data;
+                voucherError = resp.error;
+            }
+
             if (voucherError) throw voucherError;
 
             // Insert entries
