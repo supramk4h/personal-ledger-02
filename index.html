@@ -100,6 +100,7 @@ const ICONS = {
     ExclamationTriangle: (c) => `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="${c}"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>`,
     CheckCircle: (c) => `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="${c}"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
     CloudArrowUp: (c) => `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="${c}"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>`,
+    CloudArrowDown: (c) => `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="${c}"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9.75v6.75m0 0l-3-3m3 3l3-3m-8.25 6a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>`,
 };
 
 const NAVIGATION_ITEMS = [
@@ -490,6 +491,8 @@ async function deleteAccountById(id) {
         return false;
     }
     
+    if (!(await askPassword('delete this account'))) return false;
+    
     try {
         await deleteAccount(id);
         state.accounts = state.accounts.filter(acc => acc.id !== id);
@@ -533,6 +536,8 @@ async function updateVoucher(id, voucherData) {
 }
 
 async function deleteVoucherById(id) {
+    if (!(await askPassword('delete this voucher'))) return false;
+    
     try {
         await deleteVoucher(id);
         state.vouchers = state.vouchers.filter(v => v.id !== id);
@@ -695,6 +700,13 @@ const Dashboard = () => {
         expense: totalOutflow
     };
 
+    // Account Balances Data
+    const accountsWithBalances = state.accounts
+        .map(acc => ({ name: acc.name, balance: calculateAccountBalance(acc.id) }))
+        .filter(acc => Math.abs(acc.balance) > 0)
+        .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+        .slice(0, 8);
+
     return `
         <div class="space-y-6">
             <h1 class="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
@@ -829,16 +841,994 @@ const Dashboard = () => {
                     ` : `<div class="text-center py-8 text-gray-500 dark:text-gray-400">No transactions found.</div>`}
                 </div>
             </div>
-        </div>
-        
-    `;
+        </div>`;
 };
 
-// ... (Rest of the components remain the same but with improved UI)
+const Accounts = () => {
+    const accountBalances = new Map();
+    state.accounts.forEach(account => {
+        accountBalances.set(account.id, calculateAccountBalance(account.id));
+    });
 
-// Rest of the code follows the same pattern with improved UI, error handling, and password protection
+    return `
+        <div class="space-y-6">
+            <div class="flex justify-between items-center">
+                <h1 class="text-3xl font-bold text-gray-800 dark:text-white">Accounts</h1>
+                <button data-action="add-account" class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-primary-600 text-white hover:bg-primary-700">
+                    ${ICONS.Plus('w-5 h-5 mr-2')} Add Account
+                </button>
+            </div>
 
-// Initialize the app
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                            <tr>
+                                <th scope="col" class="px-6 py-3">Account Name</th><th scope="col" class="px-6 py-3">Type</th>
+                                <th scope="col" class="px-6 py-3 text-right">Opening Balance</th><th scope="col" class="px-6 py-3 text-right">Current Balance</th>
+                                <th scope="col" class="px-6 py-3 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${state.accounts.map(account => `
+                                <tr class="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600/50">
+                                    <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">${account.name}</td>
+                                    <td class="px-6 py-4">${account.type}</td>
+                                    <td class="px-6 py-4 text-right">${formatCurrency(account.opening_balance)}</td>
+                                    <td class="px-6 py-4 text-right font-semibold">${formatCurrency(accountBalances.get(account.id) || 0)}</td>
+                                    <td class="px-6 py-4 text-center">
+                                        <div class="flex justify-center space-x-2">
+                                            <button data-action="edit-account" data-id="${account.id}" class="text-primary-600 hover:text-primary-800">${ICONS.PencilSquare('w-5 h-5')}</button>
+                                            <button data-action="delete-account-click" data-id="${account.id}" class="text-red-600 hover:text-red-800">${ICONS.Trash('w-5 h-5')}</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+};
+
+const Vouchers = () => {
+    const sortedVouchers = [...state.vouchers].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return `
+        <div class="space-y-6">
+            <div class="flex justify-between items-center">
+                <h1 class="text-3xl font-bold text-gray-800 dark:text-white">Vouchers</h1>
+                <a href="#/vouchers/new" class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-primary-600 text-white hover:bg-primary-700">
+                    ${ICONS.Plus('w-5 h-5 mr-2')} Create Voucher
+                </a>
+            </div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                         <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                            <tr>
+                                <th scope="col" class="px-6 py-3">Date</th>
+                                <th scope="col" class="px-6 py-3">Voucher No.</th>
+                                <th scope="col" class="px-6 py-3">Type</th>
+                                <th scope="col" class="px-6 py-3">Narration</th>
+                                <th scope="col" class="px-6 py-3 text-right">Amount</th>
+                                <th scope="col" class="px-6 py-3 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sortedVouchers.map(voucher => {
+                                const totalDebit = voucher.voucher_entries.reduce((sum, e) => sum + parseFloat(e.debit), 0);
+                                const voucherNumber = voucher.voucher_number || `V-${voucher.id.slice(0, 8)}`;
+                                return `
+                                <tr class="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600/50">
+                                    <td class="px-6 py-4">${new Date(voucher.date).toLocaleDateString()}</td>
+                                    <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">${voucherNumber}</td>
+                                    <td class="px-6 py-4">${voucher.type}</td>
+                                    <td class="px-6 py-4 truncate max-w-sm">${voucher.narration}</td>
+                                    <td class="px-6 py-4 text-right font-semibold">${formatCurrency(totalDebit)}</td>
+                                    <td class="px-6 py-4 text-center">
+                                        <div class="flex justify-center space-x-2">
+                                             <a href="#/vouchers/edit/${voucher.id}" class="text-primary-600 hover:text-primary-800">${ICONS.PencilSquare('w-5 h-5')}</a>
+                                             <button data-action="delete-voucher-click" data-id="${voucher.id}" class="text-red-600 hover:text-red-800">${ICONS.Trash('w-5 h-5')}</button>
+                                        </div>
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+};
+
+const VoucherEditor = (id) => {
+    const voucher = id ? state.vouchers.find(v => v.id === id) : null;
+    const date = voucher ? voucher.date : new Date().toISOString().split('T')[0];
+    const type = voucher ? voucher.type : VoucherType.Journal;
+    const narration = voucher ? voucher.narration : '';
+    const voucherNumber = voucher ? (voucher.voucher_number || `V-${voucher.id.slice(0, 8)}`) : 'Auto-generated';
+    const entries = voucher ? voucher.voucher_entries : [{ accountId: '', narration: '', debit: 0, credit: 0 }, { accountId: '', narration: '', debit: 0, credit: 0 }];
+
+    const totalDebit = entries.reduce((sum, e) => sum + Number(e.debit), 0);
+    const totalCredit = entries.reduce((sum, e) => sum + Number(e.credit), 0);
+    const isBalanced = totalDebit === totalCredit && totalDebit > 0;
+    
+    return `
+    <div id="voucher-editor-container" data-voucher-id="${id || ''}" class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md space-y-6">
+        <h2 class="text-2xl font-bold">${id ? `Edit Voucher ${voucherNumber}` : 'Create New Voucher'}</h2>
+        <form id="voucher-form">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Voucher Date</label>
+                    <input name="date" type="date" value="${date}" required class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm"/>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Voucher Type</label>
+                    <select name="type" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm">
+                        ${Object.values(VoucherType).map(t => `<option value="${t}" ${type === t ? 'selected' : ''}>${t}</option>`).join('')}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Voucher Number</label>
+                    <input type="text" value="${voucherNumber}" disabled class="w-full px-3 py-2 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm cursor-not-allowed"/>
+                    <p class="text-xs text-gray-500 mt-1">${id ? 'Voucher number cannot be changed' : 'Will be auto-generated when saved'}</p>
+                </div>
+                <div class="md:col-span-3">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Overall Narration</label>
+                    <input name="narration" type="text" value="${narration}" placeholder="e.g., Paid monthly rent" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm"/>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                        <tr>
+                            <th class="px-2 py-3 w-2/5">Account Name</th>
+                            <th class="px-2 py-3 w-2/5">Narration</th>
+                            <th class="px-2 py-3 text-right">Debit</th>
+                            <th class="px-2 py-3 text-right">Credit</th>
+                            <th class="px-2 py-3 text-center"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="voucher-entries">
+                       ${entries.map((entry, index) => `
+                            <tr data-index="${index}">
+                                <td>
+                                    <select name="accountId" class="entry-field w-full bg-transparent border-b dark:border-gray-600 focus:outline-none focus:ring-0 focus:border-primary-500 py-1">
+                                        <option value="">Select Account</option>
+                                        ${state.accounts.map(acc => `<option value="${acc.id}" ${entry.account_id === acc.id ? 'selected' : ''}>${acc.name}</option>`).join('')}
+                                    </select>
+                                </td>
+                                <td><input name="narration" type="text" value="${entry.narration}" class="entry-field w-full bg-transparent border-b dark:border-gray-600 focus:outline-none focus:ring-0 focus:border-primary-500 py-1"/></td>
+                                <td><input name="debit" type="number" step="0.01" value="${entry.debit}" class="entry-field w-full text-right bg-transparent border-b dark:border-gray-600 focus:outline-none focus:ring-0 focus:border-primary-500 py-1"/></td>
+                                <td><input name="credit" type="number" step="0.01" value="${entry.credit}" class="entry-field w-full text-right bg-transparent border-b dark:border-gray-600 focus:outline-none focus:ring-0 focus:border-primary-500 py-1"/></td>
+                                <td class="text-center">
+                                    <button type="button" data-action="remove-entry-row" data-index="${index}" class="text-red-500 hover:text-red-700">
+                                        ${ICONS.Trash('w-4 h-4')}
+                                    </button>
+                                </td>
+                            </tr>
+                       `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            
+            <button type="button" data-action="add-entry-row" class="mt-4 flex items-center text-sm text-primary-600 hover:text-primary-800">
+                ${ICONS.Plus('w-4 h-4 mr-1')} Add Row
+            </button>
+
+            <div class="flex justify-end mt-6 items-center">
+                <div id="voucher-totals" class="p-2 rounded-md font-semibold text-sm ${isBalanced ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300'}">
+                   <span>Debit: ${formatCurrency(totalDebit)}</span>
+                   <span class="mx-2">|</span>
+                   <span>Credit: ${formatCurrency(totalCredit)}</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-2 pt-6 border-t dark:border-gray-700 mt-6">
+                <a href="#/vouchers" class="px-4 py-2 border rounded-md shadow-sm bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Cancel</a>
+                <button type="submit" ${!isBalanced ? 'disabled' : ''} class="px-4 py-2 border border-transparent rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    ${id ? 'Update Voucher' : 'Save Voucher'}
+                </button>
+            </div>
+        </form>
+    </div>`;
+};
+
+const Reports = () => {
+    return `
+        <div class="space-y-6">
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-white">Reports</h1>
+            
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                <form id="report-form" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                    <div class="md:col-span-2">
+                        <label for="report-account-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Account</label>
+                        <select id="report-account-select" name="accountId" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500">
+                            <option value="">Select an account</option>
+                            ${state.accounts.map(acc => `<option value="${acc.id}">${acc.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="report-start-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date</label>
+                        <input type="date" id="report-start-date" name="startDate" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"/>
+                    </div>
+                    <div>
+                        <label for="report-end-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Date</label>
+                        <input type="date" id="report-end-date" name="endDate" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"/>
+                    </div>
+                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 bg-primary-600 text-white hover:bg-primary-700">Generate</button>
+                </form>
+            </div>
+            <div id="report-output"></div>
+        </div>`;
+};
+
+const Settings = () => `
+    <div class="space-y-8 max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 dark:text-white">Settings</h1>
+        
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700">General Settings</h2>
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="setting-currency" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Currency Symbol</label>
+                        <input type="text" id="setting-currency" value="${state.settings.currency}" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm"/>
+                    </div>
+                </div>
+                <div class="flex justify-end pt-4">
+                    <button data-action="save-settings" class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-primary-600 text-white hover:bg-primary-700">
+                        Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700">Data Management</h2>
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                    <div>
+                        <h3 class="font-medium">Backup Data</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Download all your data as a JSON file.</p>
+                    </div>
+                    <div class="text-right">
+                        <button data-action="backup-data" class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">
+                            ${ICONS.CloudArrowDown('w-5 h-5 mr-2')} Backup Now
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                    <div>
+                        <h3 class="font-medium">Restore Data</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Upload a JSON file to restore your data.</p>
+                    </div>
+                    <div class="text-right">
+                        <button data-action="restore-data" class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">
+                            ${ICONS.CloudArrowUp('w-5 h-5 mr-2')} Restore Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold text-red-800 dark:text-red-300 mb-2">Danger Zone</h2>
+            <p class="text-red-700 dark:text-red-400 mb-4">This action is irreversible and will permanently delete all your application data.</p>
+            <button data-action="reset-data" class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-red-600 text-white hover:bg-red-700">
+                ${ICONS.Trash('w-5 h-5 mr-2')} Reset All Data
+            </button>
+        </div>
+    </div>`;
+
+const Modal = ({ title, children, id = '' }) => `
+    <div id="${id}" class="modal-container fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center" role="dialog">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg m-4">
+        <div class="flex justify-between items-center p-4 border-b dark:border-gray-700">
+          <h3 class="text-xl font-semibold text-gray-900 dark:text-white">${title}</h3>
+          <button data-action="close-modal" class="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg p-1.5" aria-label="Close modal">
+            ${ICONS.XMark('w-5 h-5')}
+          </button>
+        </div>
+        <div class="p-6">${children}</div>
+      </div>
+    </div>`;
+
+const ConfirmationModal = ({ title, message, id }) => Modal({
+    id, title,
+    children: `
+        <div class="space-y-4">
+            <p class="text-gray-600 dark:text-gray-300">${message}</p>
+            <div class="flex justify-end space-x-2 pt-4">
+                <button data-action="close-modal" class="px-4 py-2 border rounded-md shadow-sm bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Cancel</button>
+                <button data-action="confirm-delete" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700">Confirm</button>
+            </div>
+        </div>`
+});
+
+const AccountModal = (account) => {
+    const isEdit = !!account;
+    return Modal({
+        id: 'account-modal', title: isEdit ? 'Edit Account' : 'Add New Account',
+        children: `
+            <form id="account-form" data-id="${isEdit ? account.id : ''}">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium">Account Name</label>
+                        <input name="name" value="${isEdit ? account.name : ''}" required class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"/>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Account Type</label>
+                        <select name="type" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md">
+                           ${Object.values(AccountType).map(t => `<option value="${t}" ${isEdit && account.type === t ? 'selected' : ''}>${t}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Opening Balance</label>
+                        <input name="openingBalance" type="number" step="0.01" value="${isEdit ? account.opening_balance : 0}" required class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"/>
+                    </div>
+                    <div class="flex justify-end space-x-2 pt-4">
+                        <button type="button" data-action="close-modal" class="px-4 py-2 border rounded-md shadow-sm bg-gray-200">Cancel</button>
+                        <button type="submit" class="px-4 py-2 border rounded-md shadow-sm text-white bg-primary-600">Save Account</button>
+                    </div>
+                </div>
+            </form>`
+    });
+};
+
+const RestoreModal = () => Modal({
+    id: 'restore-modal', title: 'Restore Data from JSON',
+    children: `
+        <div class="space-y-4">
+            <p class="text-gray-600 dark:text-gray-300">Upload a JSON file to restore your data. This will replace all current data.</p>
+            <input type="file" id="restore-file" accept=".json" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"/>
+            <div class="flex justify-end space-x-2 pt-4">
+                <button data-action="close-modal" class="px-4 py-2 border rounded-md shadow-sm bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Cancel</button>
+                <button data-action="confirm-restore" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700">Restore Data</button>
+            </div>
+        </div>`
+});
+
+// --- ROUTING & APP RENDER ---
+let currentModal = null;
+let itemToDelete = null;
+
+function router() {
+    const path = window.location.hash || '#/';
+    let pageContent;
+
+    if (path.startsWith('#/vouchers/edit/')) {
+        const id = path.split('/')[3];
+        pageContent = VoucherEditor(id);
+    } else if (path === '#/vouchers/new') {
+        pageContent = VoucherEditor(null);
+    } else {
+        switch (path) {
+            case '#/accounts': pageContent = Accounts(); break;
+            case '#/vouchers': pageContent = Vouchers(); break;
+            case '#/reports': pageContent = Reports(); break;
+            case '#/settings': pageContent = Settings(); break;
+            default: pageContent = Dashboard();
+        }
+    }
+    return pageContent;
+}
+
+function renderApp() {
+    const app = document.getElementById('app');
+    const isSidebarOpen = state.ui?.isSidebarOpen ?? false;
+    app.innerHTML = `
+        <div class="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+            <div class="hidden md:flex flex-shrink-0">${Sidebar()}</div>
+            <div id="mobile-sidebar-container" class="fixed inset-0 z-30 transform -translate-x-full md:hidden ${isSidebarOpen ? 'open' : ''}">
+                <div data-action="toggle-sidebar" class="absolute inset-0 bg-black opacity-50"></div>
+                <div class="relative w-64 h-full">${Sidebar()}</div>
+            </div>
+            <div class="flex-1 flex flex-col overflow-hidden">
+                ${Header()}
+                <main class="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">${router()}</main>
+            </div>
+        </div>
+        <div id="modal-root">${currentModal || ''}</div>
+    `;
+
+    // Render charts if on dashboard
+    if ((window.location.hash === '#/' || window.location.hash === '') && typeof renderCharts === 'function') {
+        setTimeout(renderCharts, 100);
+    }
+}
+
+// --- CHART RENDERING ---
+function renderCharts() {
+    // Monthly Chart Data
+    const monthlyDataMap = new Map();
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    for (let i = 0; i < 6; i++) {
+        const date = new Date(sixMonthsAgo.getFullYear(), sixMonthsAgo.getMonth() + i, 1);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const name = date.toLocaleString('default', { month: 'short' });
+        monthlyDataMap.set(key, { name, inflow: 0, outflow: 0 });
+    }
+    state.vouchers.forEach(voucher => {
+        const date = new Date(voucher.date);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (monthlyDataMap.has(key)) {
+            const data = monthlyDataMap.get(key);
+            data.inflow += voucher.voucher_entries.reduce((s, e) => s + parseFloat(e.credit), 0);
+            data.outflow += voucher.voucher_entries.reduce((s, e) => s + parseFloat(e.debit), 0);
+        }
+    });
+    const monthlyChartData = Array.from(monthlyDataMap.values());
+
+    // Category Chart Data
+    const categoryMap = new Map();
+    state.vouchers.forEach(voucher => {
+        voucher.voucher_entries.forEach(entry => {
+            if(parseFloat(entry.debit) > 0) {
+                const account = state.accounts.find(a => a.id === entry.account_id);
+                const accountName = account ? account.name : 'Unknown';
+                categoryMap.set(accountName, (categoryMap.get(accountName) || 0) + parseFloat(entry.debit));
+            }
+        });
+    });
+    let mainCategories = Array.from(categoryMap.entries()).sort((a,b) => b[1] - a[1]);
+    let otherValue = 0;
+    if (mainCategories.length > 5) {
+        const others = mainCategories.splice(5);
+        otherValue = others.reduce((sum, [, value]) => sum + value, 0);
+    }
+    if (otherValue > 0) mainCategories.push(['Other', otherValue]);
+
+    // Income vs Expense Data
+    const totalInflow = state.vouchers.reduce((sum, v) => sum + v.voucher_entries.reduce((s, e) => s + parseFloat(e.credit), 0), 0);
+    const totalOutflow = state.vouchers.reduce((sum, v) => sum + v.voucher_entries.reduce((s, e) => s + parseFloat(e.debit), 0), 0);
+    const incomeExpenseData = {
+        income: totalInflow,
+        expense: totalOutflow
+    };
+
+    // Account Balances Data
+    const accountsWithBalances = state.accounts
+        .map(acc => ({ name: acc.name, balance: calculateAccountBalance(acc.id) }))
+        .filter(acc => Math.abs(acc.balance) > 0)
+        .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+        .slice(0, 8);
+
+    // Monthly Cash Flow Chart
+    const monthlyCtx = document.getElementById('monthlyChart');
+    if (monthlyCtx) {
+        new Chart(monthlyCtx, {
+            type: 'line',
+            data: {
+                labels: monthlyChartData.map(d => d.name),
+                datasets: [
+                    {
+                        label: 'Inflow',
+                        data: monthlyChartData.map(d => d.inflow),
+                        borderColor: '#10B981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Outflow',
+                        data: monthlyChartData.map(d => d.outflow),
+                        borderColor: '#EF4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + formatCurrency(context.parsed.y);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return formatCurrency(value);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Income vs Expense Chart
+    const incomeExpenseCtx = document.getElementById('incomeExpenseChart');
+    if (incomeExpenseCtx) {
+        new Chart(incomeExpenseCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Income', 'Expense'],
+                datasets: [{
+                    data: [incomeExpenseData.income, incomeExpenseData.expense],
+                    backgroundColor: ['#10B981', '#EF4444'],
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': ' + formatCurrency(context.parsed);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Expense Categories Chart
+    const categoryCtx = document.getElementById('categoryChart');
+    if (categoryCtx) {
+        new Chart(categoryCtx, {
+            type: 'pie',
+            data: {
+                labels: mainCategories.map(c => c[0]),
+                datasets: [{
+                    data: mainCategories.map(c => c[1]),
+                    backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'],
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': ' + formatCurrency(context.parsed);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Account Balances Chart
+    const accountCtx = document.getElementById('accountChart');
+    if (accountCtx) {
+        new Chart(accountCtx, {
+            type: 'bar',
+            data: {
+                labels: accountsWithBalances.map(acc => acc.name),
+                datasets: [{
+                    label: 'Account Balance',
+                    data: accountsWithBalances.map(acc => acc.balance),
+                    backgroundColor: accountsWithBalances.map(acc => acc.balance >= 0 ? '#10B981' : '#EF4444'),
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Balance: ' + formatCurrency(context.parsed.y);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function(value) {
+                                return formatCurrency(value);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// --- EVENT HANDLERS ---
+document.addEventListener('click', async e => {
+    const action = e.target.closest('[data-action]');
+    if (!action) return;
+
+    const actionName = action.dataset.action;
+    const id = action.dataset.id;
+    
+    switch(actionName) {
+        case 'toggle-theme':
+            toggleTheme();
+            break;
+        case 'toggle-sidebar':
+            state.ui.isSidebarOpen = !state.ui.isSidebarOpen;
+            renderApp();
+            break;
+        case 'add-account':
+            currentModal = AccountModal(null);
+            renderApp();
+            break;
+        case 'edit-account':
+            const accountToEdit = state.accounts.find(a => a.id === id);
+            currentModal = AccountModal(accountToEdit);
+            renderApp();
+            break;
+        case 'delete-account-click':
+            itemToDelete = { type: 'account', id };
+            currentModal = ConfirmationModal({
+                id: 'confirm-modal', title: 'Delete Account', message: 'Are you sure you want to delete this account? This action cannot be undone.'
+            });
+            renderApp();
+            break;
+        case 'delete-voucher-click':
+            itemToDelete = { type: 'voucher', id };
+            currentModal = ConfirmationModal({
+                id: 'confirm-modal', title: 'Delete Voucher', message: 'Are you sure you want to delete this voucher? This action cannot be undone.'
+            });
+            renderApp();
+            break;
+        case 'confirm-delete':
+            if (itemToDelete?.type === 'account') await deleteAccountById(itemToDelete.id);
+            if (itemToDelete?.type === 'voucher') await deleteVoucherById(itemToDelete.id);
+            itemToDelete = null;
+            currentModal = null;
+            renderApp();
+            break;
+        case 'close-modal':
+            currentModal = null;
+            renderApp();
+            break;
+        case 'save-settings':
+            const currency = document.getElementById('setting-currency').value;
+            updateSettingsInDB({ currency });
+            break;
+        case 'backup-data':
+            const jsonData = JSON.stringify({
+                accounts: state.accounts,
+                vouchers: state.vouchers,
+                settings: state.settings
+            }, null, 2);
+            const blob = new Blob([jsonData], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `cashbook-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            break;
+        case 'restore-data':
+            currentModal = RestoreModal();
+            renderApp();
+            break;
+        case 'confirm-restore':
+            const fileInput = document.getElementById('restore-file');
+            if (fileInput.files.length === 0) {
+                showError('Please select a file to restore.');
+                return;
+            }
+            
+            if (!(await askPassword('restore data'))) return;
+            
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = async function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    // Validate data structure
+                    if (!data.accounts || !data.vouchers || !data.settings) {
+                        throw new Error('Invalid backup file format');
+                    }
+                    
+                    // Reset data in Supabase
+                    await supabase.from('voucher_entries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                    await supabase.from('vouchers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                    await supabase.from('accounts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                    
+                    // Insert accounts
+                    for (const account of data.accounts) {
+                        await supabase.from('accounts').insert(account);
+                    }
+                    
+                    // Insert vouchers and entries
+                    for (const voucher of data.vouchers) {
+                        const entries = voucher.voucher_entries || [];
+                        delete voucher.voucher_entries;
+                        
+                        const { data: newVoucher } = await supabase.from('vouchers').insert(voucher).select().single();
+                        
+                        for (const entry of entries) {
+                            await supabase.from('voucher_entries').insert({
+                                ...entry,
+                                voucher_id: newVoucher.id
+                            });
+                        }
+                    }
+                    
+                    // Update settings
+                    await supabase.from('settings').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                    await supabase.from('settings').insert(data.settings);
+                    
+                    // Reload data
+                    const newData = await loadData();
+                    state.accounts = newData.accounts;
+                    state.vouchers = newData.vouchers;
+                    state.settings = newData.settings;
+                    
+                    currentModal = null;
+                    showSuccess('Data restored successfully!');
+                    renderApp();
+                } catch (error) {
+                    showError('Error restoring data: ' + error.message);
+                }
+            };
+            
+            reader.readAsText(file);
+            break;
+        case 'reset-data':
+            if (!(await askPassword('reset all data'))) return;
+            
+            if (window.confirm('DANGER: Are you absolutely sure you want to delete all data?')) {
+                resetData();
+            }
+            break;
+        case 'add-entry-row':
+        case 'remove-entry-row':
+            const editor = document.getElementById('voucher-editor-container');
+            if(editor) {
+                const voucherId = editor.dataset.voucherId;
+                const existingVoucher = voucherId ? state.vouchers.find(v => v.id === voucherId) : null;
+                const tempVoucher = {
+                    date: editor.querySelector('[name="date"]').value,
+                    type: editor.querySelector('[name="type"]').value,
+                    narration: editor.querySelector('[name="narration"]').value,
+                    entries: Array.from(editor.querySelectorAll('#voucher-entries tr')).map(row => ({
+                        accountId: row.querySelector('[name="accountId"]').value,
+                        narration: row.querySelector('[name="narration"]').value,
+                        debit: parseFloat(row.querySelector('[name="debit"]').value) || 0,
+                        credit: parseFloat(row.querySelector('[name="credit"]').value) || 0,
+                    }))
+                };
+                if(actionName === 'add-entry-row') {
+                    tempVoucher.entries.push({ accountId: '', narration: '', debit: 0, credit: 0 });
+                } else {
+                    const indexToRemove = parseInt(action.dataset.index, 10);
+                    if(tempVoucher.entries.length > 2) {
+                       tempVoucher.entries.splice(indexToRemove, 1);
+                    } else {
+                       alert('A voucher must have at least two entries.');
+                    }
+                }
+                const newEditorHtml = VoucherEditor(voucherId);
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = newEditorHtml;
+                const newContent = tempDiv.querySelector('#voucher-editor-container');
+                editor.replaceWith(newContent);
+
+                // Re-populate entries to preserve user input
+                const newRows = newContent.querySelectorAll('#voucher-entries tr');
+                tempVoucher.entries.forEach((entry, index) => {
+                    if(newRows[index]) {
+                        newRows[index].querySelector('[name="accountId"]').value = entry.accountId;
+                        newRows[index].querySelector('[name="narration"]').value = entry.narration;
+                        newRows[index].querySelector('[name="debit"]').value = entry.debit;
+                        newRows[index].querySelector('[name="credit"]').value = entry.credit;
+                    }
+                });
+            }
+            break;
+    }
+});
+
+document.addEventListener('input', e => {
+    // Live update for voucher editor totals
+    if (e.target.closest('#voucher-editor-container')) {
+        const editor = e.target.closest('#voucher-editor-container');
+        const entries = Array.from(editor.querySelectorAll('#voucher-entries tr')).map(row => ({
+            debit: parseFloat(row.querySelector('[name="debit"]').value) || 0,
+            credit: parseFloat(row.querySelector('[name="credit"]').value) || 0,
+        }));
+        const totalDebit = entries.reduce((sum, e) => sum + e.debit, 0);
+        const totalCredit = entries.reduce((sum, e) => sum + e.credit, 0);
+        const isBalanced = totalDebit === totalCredit && totalDebit > 0;
+
+        const totalsEl = editor.querySelector('#voucher-totals');
+        totalsEl.innerHTML = `<span>Debit: ${formatCurrency(totalDebit)}</span><span class="mx-2">|</span><span>Credit: ${formatCurrency(totalCredit)}</span>`;
+        totalsEl.className = `p-2 rounded-md font-semibold text-sm ${isBalanced ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300'}`;
+        editor.querySelector('button[type="submit"]').disabled = !isBalanced;
+    }
+});
+
+document.addEventListener('submit', async e => {
+    e.preventDefault();
+    const form = e.target;
+    
+    if (form.id === 'account-form') {
+        const id = form.dataset.id;
+        const formData = new FormData(form);
+        const accountData = {
+            name: formData.get('name'),
+            type: formData.get('type'),
+            openingBalance: parseFloat(formData.get('openingBalance')),
+        };
+        
+        let success = false;
+        if (id) {
+            success = await updateAccount(id, accountData);
+        } else {
+            success = await addAccount(accountData);
+        }
+        
+        if (success) {
+            currentModal = null;
+            renderApp();
+        }
+    }
+    
+    if (form.id === 'voucher-form') {
+        const id = document.getElementById('voucher-editor-container').dataset.voucherId;
+        const entries = Array.from(document.querySelectorAll('#voucher-entries tr')).map(row => ({
+            accountId: row.querySelector('[name="accountId"]').value,
+            narration: row.querySelector('[name="narration"]').value,
+            debit: parseFloat(row.querySelector('[name="debit"]').value) || 0,
+            credit: parseFloat(row.querySelector('[name="credit"]').value) || 0,
+        }));
+        
+        const voucherData = {
+            date: form.querySelector('[name="date"]').value,
+            type: form.querySelector('[name="type"]').value,
+            narration: form.querySelector('[name="narration"]').value,
+            entries: entries.filter(e => e.accountId),
+        };
+        
+        let success = false;
+        if (id) {
+            success = await updateVoucher(id, voucherData);
+        } else {
+            success = await addVoucher(voucherData);
+        }
+    }
+    
+    if (form.id === 'report-form') {
+        const formData = new FormData(form);
+        const accountId = formData.get('accountId');
+        const startDate = formData.get('startDate');
+        const endDate = formData.get('endDate');
+
+        if (!accountId || !startDate || !endDate) {
+            alert('Please select an account and a date range.');
+            return;
+        }
+
+        const account = state.accounts.find(a => a.id === accountId);
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+
+        const openingBalance = calculateAccountBalanceAsOf(accountId, start);
+
+        let runningBalance = openingBalance;
+        const transactions = state.vouchers
+            .filter(v => { const vDate = new Date(v.date); return vDate >= start && vDate <= end; })
+            .flatMap(v => v.voucher_entries
+                .filter(e => e.account_id === accountId)
+                .map(e => {
+                    runningBalance += parseFloat(e.debit) - parseFloat(e.credit);
+                    return { ...e, date: v.date, voucherId: v.id, runningBalance };
+                })
+            )
+            .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            
+        const totalDebit = transactions.reduce((sum, e) => sum + parseFloat(e.debit), 0);
+        const totalCredit = transactions.reduce((sum, e) => sum + parseFloat(e.credit), 0);
+        const closingBalance = runningBalance;
+
+        document.getElementById('report-output').innerHTML = `
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                <div class="flex justify-between items-start">
+                    <div id="printable-area" class="w-full ${state.theme === 'dark' ? 'dark-mode-print-fix' : ''}">
+                        <div class="p-4 bg-white dark:bg-gray-800 text-black dark:text-white">
+                            <div class="text-center mb-6">
+                                <h2 class="text-2xl font-bold">${account.name}</h2>
+                                <p class="text-gray-500 dark:text-gray-400">Account Ledger</p>
+                                <p class="text-gray-500 dark:text-gray-400">Period: ${start.toLocaleDateString()} to ${end.toLocaleDateString()}</p>
+                            </div>
+                            <table class="w-full text-sm">
+                                <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left">Date</th>
+                                        <th class="px-4 py-3 text-left">Voucher No.</th>
+                                        <th class="px-4 py-3 text-left">Narration</th>
+                                        <th class="px-4 py-3 text-right">Debit</th>
+                                        <th class="px-4 py-3 text-right">Credit</th>
+                                        <th class="px-4 py-3 text-right">Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="font-semibold border-b dark:border-gray-700"><td colSpan="5" class="px-4 py-2">Opening Balance</td><td class="px-4 py-2 text-right">${formatCurrency(openingBalance)}</td></tr>
+                                    ${transactions.map(e => {
+                                        const voucher = state.vouchers.find(v => v.id === e.voucherId);
+                                        const voucherNumber = voucher ? (voucher.voucher_number || `V-${voucher.id.slice(0, 8)}`) : 'N/A';
+                                        return `
+                                        <tr class="border-b dark:border-gray-700">
+                                            <td class="px-4 py-2">${new Date(e.date).toLocaleDateString()}</td>
+                                            <td class="px-4 py-2">${voucherNumber}</td>
+                                            <td class="px-4 py-2">${e.narration}</td>
+                                            <td class="px-4 py-2 text-right">${parseFloat(e.debit) > 0 ? formatCurrency(e.debit) : '-'}</td>
+                                            <td class="px-4 py-2 text-right">${parseFloat(e.credit) > 0 ? formatCurrency(e.credit) : '-'}</td>
+                                            <td class="px-4 py-2 text-right">${formatCurrency(e.runningBalance)}</td>
+                                        </tr>
+                                    `}).join('')}
+                                    <tr class="font-semibold bg-gray-50 dark:bg-gray-700"><td colSpan="3" class="px-4 py-2 text-right">Totals</td>
+                                    <td class="px-4 py-2 text-right">${formatCurrency(totalDebit)}</td><td class="px-4 py-2 text-right">${formatCurrency(totalCredit)}</td><td></td></tr>
+                                    <tr class="font-bold text-lg bg-gray-100 dark:bg-gray-900"><td colSpan="5" class="px-4 py-3 text-right">Closing Balance</td>
+                                    <td class="px-4 py-3 text-right">${formatCurrency(closingBalance)}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                     <button onclick="window.print()" class="ml-4 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">
+                        ${ICONS.Printer('w-5 h-5 mr-2')} Print
+                    </button>
+                </div>
+             </div>`;
+    }
+});
+
+// Reset data function for Supabase
+async function resetData() {
+    try {
+        // Delete all data from Supabase
+        await supabase.from('voucher_entries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('vouchers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('accounts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        // Reload data
+        const data = await loadData();
+        state.accounts = data.accounts;
+        state.vouchers = data.vouchers;
+        state.settings = data.settings;
+        
+        showSuccess('All data has been reset successfully!');
+        renderApp();
+    } catch (error) {
+        showError('Error resetting data: ' + error.message);
+    }
+}
+
+// --- INITIALIZATION ---
 async function init() {
     try {
         const data = await loadData();
